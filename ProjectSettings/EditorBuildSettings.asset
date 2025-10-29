@@ -4,7 +4,10 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/HololensTestScene.unity
+    guid: c686a2ffbb9420e46ae669fce958ed00
   m_configObjects:
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 3d5ab1a2f3683a449bb984828d82df00, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 815293a3e27835541ab96fce9716646b, type: 2}
