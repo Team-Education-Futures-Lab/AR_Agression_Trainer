@@ -96,14 +96,19 @@ public class FeedbackHandler : MonoBehaviour
 
         // STEP 4: Build LLM prompt using raw values
         string prompt =
-            $"Analyze the following VR training session. User measurements:\n" +
-            $"Face Emotion: {faceRaw} (normalized: {faceNorm})\n" +
-            $"Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
-            $"Hand Sign: {handRaw}\n" +
-            $"Finger Gesture: {fingerRaw}\n" +
-            $"Threshold calculation result: {endResult} (1 = exceeded, 0 = below threshold)\n\n" +
-            $"Provide constructive feedback in this format:\n" +
-            $"FACE: ...\nVOICE: ...\nGESTURE: ...";
+            $"You are analyzing a VR training session where a trainee is interacting with an angry customer.\n" +
+            $"Based on the following measurements, determine whether the aggression is likely to escalate and provide actionable feedback to the trainee.\n\n" +
+            $"User Measurements:\n" +
+            $"- Face Emotion: {faceRaw} (normalized: {faceNorm})\n" +
+            $"- Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
+            $"- Hand Sign: {handRaw}\n" +
+            $"- Finger Gesture: {fingerRaw}\n" +
+            $"- Threshold Calculation Result: {endResult} (1 = aggression likely escalates, 0 = aggression under control)\n\n" +
+            $"Provide constructive feedback in the following format:\n" +
+            $"FACE: Comment on how the trainee's facial expressions impact escalation.\n" +
+            $"VOICE: Comment on how the trainee's tone, volume, and emotion impact escalation.\n" +
+            $"GESTURE: Comment on how the trainee's hand/finger gestures impact escalation.\n" +
+            $"GENERAL: Provide an overall recommendation to reduce escalation risk.";
 
         Debug.Log("📌 Prompt sent to LLM:\n" + prompt);
 
@@ -149,6 +154,7 @@ public class FeedbackHandler : MonoBehaviour
             case "05": return "Angry";
             case "06": return "Fear";
             case "07": return "Disgust";
+            case "08": return "Surprise"; // added
         }
 
         // Face string mapping
@@ -157,7 +163,7 @@ public class FeedbackHandler : MonoBehaviour
         if (emotion.Contains("disgust")) return "Disgust";
         if (emotion.Contains("sad")) return "Sad";
         if (emotion.Contains("happy")) return "Happy";
-        if (emotion.Contains("surprise")) return "Surprise";
+        if (emotion.Contains("surprise")) return "Surprise"; // ensure lowercase match
         if (emotion.Contains("neutral") || emotion.Contains("calm") || emotion.Contains("none")) return "Neutral";
 
         return "Neutral";
