@@ -18,7 +18,7 @@ public class FeedbackHandler : MonoBehaviour
     [SerializeField] private string ollamaModel = "llama3";
 
     [Header("Timing and Factors")]
-    private float feedbackInterval = 120f;
+    private float feedbackInterval = 30f;
     private int FaceFactor = 1;
     private int VoiceFactor = 2;
     private double ThresholdFactor = 10.5;
