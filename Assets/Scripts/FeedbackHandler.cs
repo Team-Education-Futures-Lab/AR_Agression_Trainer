@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Text;
 using UnityEngine;
@@ -7,86 +8,164 @@ using Newtonsoft.Json;
 
 public class FeedbackHandler : MonoBehaviour
 {
-    // UI Text fields
-    public TextMeshProUGUI FaceTMP;
-    public TextMeshProUGUI VoiceTMP;
-    public TextMeshProUGUI GestureTMP;
+    [Header("UI References")]
     public TextMeshProUGUI ResponseTMP;
     public TextMeshProUGUI NextStepInt;
 
-    // Feedback data
-    private int UserID = 1;
-    private int Level = 2;
-    private string Feedback = "";
-
-    // Flask server URL
-    [SerializeField] private string serverUrl = "http://127.0.0.1:5000/FeedbackPoster";
-
-    // Ollama server URL
+    [Header("Server Settings")]
+    [SerializeField] private string emotionApiUrl = "http://127.0.0.1:5000/get_emotion";
     [SerializeField] private string ollamaUrl = "http://127.0.0.1:11434/api/generate";
     [SerializeField] private string ollamaModel = "llama3";
 
-    // Interval in seconds (2 minutes)
+    [Header("Timing and Factors")]
     private float feedbackInterval = 120f;
+    private int FaceFactor = 1;
+    private int VoiceFactor = 2;
+    private double ThresholdFactor = 10.5;
+
+    private string Feedback = "";
+
+    private enum Emotions { Angry = 1, Disgust = 2, Fear = 3, Sad = 4, Surprise = 5, Happy = 6, Neutral = 7 }
 
     void Start()
     {
         StartCoroutine(PeriodicFeedback());
     }
 
-    // ==========================
-    // PERIODIC FEEDBACK
-    // ==========================
     private IEnumerator PeriodicFeedback()
     {
         while (true)
         {
-            GeneratingFeedback();
+            yield return StartCoroutine(FetchEmotionsAndGenerateFeedback());
             yield return new WaitForSeconds(feedbackInterval);
         }
     }
 
-    // ==========================
-    // GENERATE FEEDBACK
-    // ==========================
-    public void GeneratingFeedback()
+    private IEnumerator FetchEmotionsAndGenerateFeedback()
     {
-        string faceResult = GetAfterColon(FaceTMP.text);
-        string voiceResult = GetAfterColon(VoiceTMP.text);
-        string gestureResult = GetAfterColon(GestureTMP.text);
+        // STEP 1: Fetch emotions directly from API
+        string faceRaw = "none";
+        string voiceRaw = "none";
+        string handRaw = "none";
+        string fingerRaw = "none";
 
-        Debug.Log($"Generating feedback:\nFace: {faceResult}\nVoice: {voiceResult}\nGesture: {gestureResult}");
-
-        string prompt =
-            $"Generate constructive feedback for a VR training session.\n" +
-            $"Provide three parts: FACE feedback, VOICE feedback, and GESTURE feedback.\n" +
-            $"Using the following results:\n" +
-            $"FACE expression: {faceResult}\n" +
-            $"VOICE tone: {voiceResult}\n" +
-            $"GESTURE movement: {gestureResult}\n" +
-            $"Format your answer as:\nFACE: ...\nVOICE: ...\nGESTURE: ...";
-
-        StartCoroutine(QueryOllama(prompt));
-    }
-
-    private string GetAfterColon(string input)
-    {
-        if (string.IsNullOrEmpty(input)) return "";
-        string[] parts = input.Split(':');
-        return parts.Length > 1 ? parts[1].Trim() : parts[0].Trim();
-    }
-
-    // ==========================
-    // OLLAMA QUERY
-    // ==========================
-    private IEnumerator QueryOllama(string prompt)
-    {
-        var requestData = new OllamaRequest
+        using (UnityWebRequest www = UnityWebRequest.Get(emotionApiUrl))
         {
-            model = ollamaModel,
-            prompt = prompt
-        };
+            www.timeout = 2;
+            yield return www.SendWebRequest();
 
+            if (www.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    EmotionData data = JsonUtility.FromJson<EmotionData>(www.downloadHandler.text);
+                    faceRaw = SafeText(data.face_emotion);
+                    voiceRaw = SafeText(data.voice_emotion);
+                    handRaw = SafeText(data.hand_sign);
+                    fingerRaw = SafeText(data.finger_gesture);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"⚠️ Failed to parse emotion API: {e.Message}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"⚠️ Emotion API request failed: {www.error}");
+            }
+        }
+
+        Debug.Log($"🎤 Fetched Emotions | Face: '{faceRaw}', Voice: '{voiceRaw}', Hand: '{handRaw}', Finger: '{fingerRaw}'");
+
+        // STEP 2: Normalize face/voice only for calculation
+        string faceNorm = NormalizeEmotion(faceRaw);
+        string voiceNorm = NormalizeEmotion(voiceRaw);
+
+        Debug.Log($"🧩 Normalized values | Face: '{faceNorm}', Voice: '{voiceNorm}'");
+
+        // STEP 3: Threshold calculation
+        int endResult = 0;
+        if (Enum.TryParse(faceNorm, true, out Emotions faceVal) &&
+            Enum.TryParse(voiceNorm, true, out Emotions voiceVal))
+        {
+            double total = ((int)faceVal * FaceFactor) + ((int)voiceVal * VoiceFactor);
+            endResult = total >= ThresholdFactor ? 1 : 0;
+        }
+
+        if (NextStepInt != null) NextStepInt.text = endResult.ToString();
+
+        // STEP 4: Build LLM prompt using raw values
+        string prompt =
+            $"Analyze the following VR training session. User measurements:\n" +
+            $"Face Emotion: {faceRaw} (normalized: {faceNorm})\n" +
+            $"Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
+            $"Hand Sign: {handRaw}\n" +
+            $"Finger Gesture: {fingerRaw}\n" +
+            $"Threshold calculation result: {endResult} (1 = exceeded, 0 = below threshold)\n\n" +
+            $"Provide constructive feedback in this format:\n" +
+            $"FACE: ...\nVOICE: ...\nGESTURE: ...";
+
+        Debug.Log("📌 Prompt sent to LLM:\n" + prompt);
+
+        // STEP 5: Query LLM
+        bool completed = false;
+        string faceFeedback = faceNorm;
+        string voiceFeedback = voiceNorm;
+        string gestureFeedback = $"{handRaw} / {fingerRaw}";
+
+        yield return StartCoroutine(QueryOllama(prompt, (f, v, g) =>
+        {
+            faceFeedback = string.IsNullOrEmpty(f) ? faceNorm : f;
+            voiceFeedback = string.IsNullOrEmpty(v) ? voiceNorm : v;
+            gestureFeedback = string.IsNullOrEmpty(g) ? $"{handRaw} / {fingerRaw}" : g;
+            completed = true;
+        }));
+
+        yield return new WaitUntil(() => completed);
+
+        Debug.Log($"📝 LLM Feedback | Face={faceFeedback}, Voice={voiceFeedback}, Gesture={gestureFeedback}");
+
+        // STEP 6: Update UI
+        if (ResponseTMP != null) ResponseTMP.text = Feedback.Replace("\n", " ");
+    }
+
+    private string SafeText(string value)
+    {
+        return string.IsNullOrEmpty(value) ? "none" : value.ToLower().Trim();
+    }
+
+    private string NormalizeEmotion(string emotion)
+    {
+        if (string.IsNullOrEmpty(emotion)) return "Neutral";
+        emotion = emotion.ToLower().Trim();
+
+        // Map voice numeric codes to string
+        switch (emotion)
+        {
+            case "01":
+            case "02": return "Neutral"; // neutral / calm
+            case "03": return "Happy";
+            case "04": return "Sad";
+            case "05": return "Angry";
+            case "06": return "Fear";
+            case "07": return "Disgust";
+        }
+
+        // Face string mapping
+        if (emotion.Contains("fear")) return "Fear";
+        if (emotion.Contains("angry")) return "Angry";
+        if (emotion.Contains("disgust")) return "Disgust";
+        if (emotion.Contains("sad")) return "Sad";
+        if (emotion.Contains("happy")) return "Happy";
+        if (emotion.Contains("surprise")) return "Surprise";
+        if (emotion.Contains("neutral") || emotion.Contains("calm") || emotion.Contains("none")) return "Neutral";
+
+        return "Neutral";
+    }
+
+    private IEnumerator QueryOllama(string prompt, Action<string, string, string> onComplete)
+    {
+        var requestData = new OllamaRequest { model = ollamaModel, prompt = prompt };
         string jsonData = JsonConvert.SerializeObject(requestData);
         byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
 
@@ -95,7 +174,7 @@ public class FeedbackHandler : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json"); // important for Ollama API
+            request.SetRequestHeader("Accept", "application/json");
 
             yield return request.SendWebRequest();
 
@@ -104,125 +183,62 @@ public class FeedbackHandler : MonoBehaviour
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogError($"❌ Ollama request failed: {request.error}\nResponse: {responseText}");
+                onComplete?.Invoke("", "", "");
+                yield break;
             }
-            else
-            {
-                // Flatten all chunked responses into one single sentence
-                string feedbackText = FlattenOllamaStreamingResponse(responseText);
 
-                FaceTMP.text = ExtractSection(feedbackText, "FACE");
-                VoiceTMP.text = ExtractSection(feedbackText, "VOICE");
-                GestureTMP.text = ExtractSection(feedbackText, "GESTURE");
-                ResponseTMP.text = feedbackText.Replace("\n", " "); // single sentence in ResponseTMP
+            Feedback = FlattenOllamaStreamingResponse(responseText);
 
-                Feedback = feedbackText;
+            string face = ExtractSection(Feedback, "FACE");
+            string voice = ExtractSection(Feedback, "VOICE");
+            string gesture = ExtractSection(Feedback, "GESTURE");
 
-                Debug.Log("✅ Ollama feedback generated:\n" + feedbackText);
-            }
+            onComplete?.Invoke(face, voice, gesture);
         }
     }
 
-    // Flatten streaming JSON lines from Ollama into one string
     private string FlattenOllamaStreamingResponse(string rawJson)
     {
         if (string.IsNullOrEmpty(rawJson)) return "";
-
-        // Split lines, parse each JSON chunk
-        StringBuilder fullResponse = new StringBuilder();
-        string[] lines = rawJson.Split('\n');
-        foreach (string line in lines)
+        StringBuilder sb = new StringBuilder();
+        foreach (string line in rawJson.Split('\n'))
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
-
             try
             {
                 var chunk = JsonConvert.DeserializeObject<OllamaResponse>(line);
                 if (!string.IsNullOrEmpty(chunk?.response))
-                {
-                    fullResponse.Append(chunk.response);
-                }
+                    sb.Append(chunk.response);
             }
-            catch
-            {
-                fullResponse.Append(line); // fallback
-            }
+            catch { sb.Append(line); }
         }
-
-        // Clean multiple spaces and newlines
-        string result = fullResponse.ToString().Replace("\n", " ").Replace("\r", " ").Trim();
-        return System.Text.RegularExpressions.Regex.Replace(result, @"\s+", " ");
-    }
-
-    [System.Serializable]
-    public class OllamaRequest
-    {
-        public string model;
-        public string prompt;
-    }
-
-    private string ParseOllamaResponse(string rawJson)
-    {
-        try
-        {
-            var resp = JsonConvert.DeserializeObject<OllamaResponse>(rawJson);
-            return resp?.response ?? rawJson ?? "";
-        }
-        catch
-        {
-            Debug.LogWarning("Failed to parse Ollama response, returning raw text.");
-            return rawJson ?? "";
-        }
-    }
-
-    [System.Serializable]
-    private class OllamaResponse
-    {
-        public string response;
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
     }
 
     private string ExtractSection(string text, string section)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        string[] lines = text.Split('\n');
-        foreach (string line in lines)
+        foreach (string line in text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (line.StartsWith(section + ":"))
+            if (line.StartsWith(section + ":", StringComparison.OrdinalIgnoreCase))
             {
-                string[] parts = line.Split(new[] { ':' }, 2);
-                return parts.Length > 1 ? parts[1].Trim() : "";
+                string content = line.Substring(section.Length + 1).Trim();
+                string firstWord = content.Split(new[] { ' ', '.', ',' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                return NormalizeEmotion(firstWord);
             }
         }
         return "";
     }
 
-    // ==========================
-    // POST FEEDBACK TO FLASK
-    // ==========================
-    public void SubmitFeedback(string userFeedback)
+    [Serializable] public class OllamaRequest { public string model; public string prompt; }
+    [Serializable] private class OllamaResponse { public string response; }
+
+    [Serializable]
+    private class EmotionData
     {
-        StartCoroutine(PostToServer("Feedback push", userFeedback));
-    }
-
-    private IEnumerator PostToServer(string requestType, string userFeedback)
-    {
-        WWWForm form = new WWWForm();
-        form.AddField("type", requestType);
-        form.AddField("User_ID", UserID);
-        form.AddField("Level", Level);
-        form.AddField("Feedback", userFeedback);
-
-        using (UnityWebRequest request = UnityWebRequest.Post(serverUrl, form))
-        {
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                Debug.Log($"✅ Server Response: {request.downloadHandler.text}");
-                ResponseTMP.text = request.downloadHandler.text;
-            } else
-            {
-                Debug.LogError($"❌ Server Error: {request.error}");   
-            }
-        }
+        public string face_emotion;
+        public string voice_emotion;
+        public string hand_sign;
+        public string finger_gesture;
     }
 }

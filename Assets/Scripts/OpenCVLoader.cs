@@ -10,71 +10,65 @@ public class OpenCVLoader : MonoBehaviour
     public TextMeshProUGUI VoiceTMP;
     public TextMeshProUGUI GestureTMP;
 
-    // Flask API endpoint
-    private string apiUrl = "http://127.0.0.1:5000/get_emotion";
-
-    // Internal state
+    [Header("API Settings")]
+    [SerializeField] private string apiUrl = "http://127.0.0.1:5000/get_emotion";
     private bool isConnected = false;
+
+    // Shared state accessible from FeedbackHandler
+    public static string CurrentFaceEmotion = "none";
+    public static string CurrentVoiceEmotion = "none";
+    public static string CurrentHandSign = "none";
+    public static string CurrentFingerGesture = "none";
 
     void Start()
     {
         StartCoroutine(GetEmotionLoop());
     }
 
-    IEnumerator GetEmotionLoop()
+    private IEnumerator GetEmotionLoop()
     {
         while (true)
         {
-            // We move the web request out of the try/catch so yield is valid
-            UnityWebRequest www = null;
-            bool success = false;
-            string errorMessage = "";
-
-            // Perform the request safely
-            www = UnityWebRequest.Get(apiUrl);
-            www.timeout = 2; // seconds
-
-            yield return www.SendWebRequest();
-
-            if (www.result == UnityWebRequest.Result.Success)
+            using (UnityWebRequest www = UnityWebRequest.Get(apiUrl))
             {
-                success = true;
-                string json = www.downloadHandler.text;
+                www.timeout = 2;
+                yield return www.SendWebRequest();
 
-                try
+                if (www.result == UnityWebRequest.Result.Success)
                 {
-                    EmotionData data = JsonUtility.FromJson<EmotionData>(json);
+                    string json = www.downloadHandler.text;
 
-                    isConnected = true;
-                    Debug.Log($"🎭 Face: {data.face_emotion} | 🎤 Voice: {data.voice_emotion} | ✋ Hand: {data.hand_sign} | 👉 Gesture: {data.finger_gesture}");
+                    try
+                    {
+                        EmotionData data = JsonUtility.FromJson<EmotionData>(json);
+                        isConnected = true;
 
-                    // --- Update UI elements ---
-                    if (FaceTMP != null)
-                        FaceTMP.text = "Face Emotion: " + SafeText(data.face_emotion);
+                        // Update static values
+                        CurrentFaceEmotion = SafeText(data.face_emotion);
+                        CurrentVoiceEmotion = SafeText(data.voice_emotion);
+                        CurrentHandSign = SafeText(data.hand_sign);
+                        CurrentFingerGesture = SafeText(data.finger_gesture);
 
-                    if (VoiceTMP != null)
-                        VoiceTMP.text = "Voice Emotion: " + SafeText(data.voice_emotion);
+                        // Debug the actual raw readings
+                        Debug.Log($"🎭 [OpenCVLoader] Raw Emotions | Face: {CurrentFaceEmotion}, Voice: {CurrentVoiceEmotion}, Hand: {CurrentHandSign}, Finger: {CurrentFingerGesture}");
 
-                    if (GestureTMP != null)
-                        GestureTMP.text = $"Hand Sign: {SafeText(data.hand_sign)}\nFinger Gesture: {SafeText(data.finger_gesture)}";
+                        // Update UI for visibility (optional)
+                        if (FaceTMP) FaceTMP.text = $"Face Emotion: {CurrentFaceEmotion}";
+                        if (VoiceTMP) VoiceTMP.text = $"Voice Emotion: {CurrentVoiceEmotion}";
+                        if (GestureTMP) GestureTMP.text = $"Hand: {CurrentHandSign} | Finger: {CurrentFingerGesture}";
+                    }
+                    catch (System.Exception e)
+                    {
+                        HandleConnectionError($"JSON parse error: {e.Message}");
+                    }
                 }
-                catch (System.Exception e)
+                else
                 {
-                    errorMessage = e.Message;
-                    success = false;
+                    HandleConnectionError(www.error);
                 }
             }
-            else
-            {
-                errorMessage = www.error;
-            }
 
-            // Handle network or parse errors
-            if (!success)
-            {
-                HandleConnectionError(errorMessage);
-            }
-
+            // Poll every 1 second (can be reduced if needed)
             yield return new WaitForSeconds(1f);
         }
     }
@@ -83,25 +77,26 @@ public class OpenCVLoader : MonoBehaviour
     {
         if (isConnected)
         {
-            Debug.LogWarning($"⚠️ Lost connection to Flask server: {error}");
+            Debug.LogWarning($"⚠️ Lost connection: {error}");
             isConnected = false;
         }
-        else
-        {
-            Debug.Log($"🕐 Waiting for Flask server... ({error})");
-        }
 
-        if (FaceTMP != null)
-            FaceTMP.text = "Face Emotion: (disconnected)";
-        if (VoiceTMP != null)
-            VoiceTMP.text = "Voice Emotion: (disconnected)";
-        if (GestureTMP != null)
-            GestureTMP.text = "Hand Sign: (disconnected)\nFinger Gesture: (disconnected)";
+        // Update UI to show disconnected
+        if (FaceTMP) FaceTMP.text = "Face Emotion: (disconnected)";
+        if (VoiceTMP) VoiceTMP.text = "Voice Emotion: (disconnected)";
+        if (GestureTMP) GestureTMP.text = "Hand: (disconnected) | Finger: (disconnected)";
+
+        // Reset static values
+        CurrentFaceEmotion = "none";
+        CurrentVoiceEmotion = "none";
+        CurrentHandSign = "none";
+        CurrentFingerGesture = "none";
     }
 
     private string SafeText(string value)
     {
-        return string.IsNullOrEmpty(value) ? "none" : value;
+        if (string.IsNullOrEmpty(value)) return "none";
+        return value.ToLower().Trim();
     }
 }
 
