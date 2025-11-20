@@ -4,7 +4,6 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using TMPro;
-using Newtonsoft.Json;
 
 public class FeedbackHandler : MonoBehaviour
 {
@@ -14,6 +13,7 @@ public class FeedbackHandler : MonoBehaviour
 
     [Header("Server Settings")]
     [SerializeField] private string emotionApiUrl = "http://127.0.0.1:5000/get_emotion";
+    [SerializeField] private string feedbackApiUrl = "http://127.0.0.1:5000/submit_feedback";
     [SerializeField] private string ollamaUrl = "http://127.0.0.1:11434/api/generate";
     [SerializeField] private string ollamaModel = "llama3";
 
@@ -23,6 +23,9 @@ public class FeedbackHandler : MonoBehaviour
     private int VoiceFactor = 2;
     private double ThresholdFactor = 10.5;
 
+    [Header("Current static id's")]
+    private int UserID = 1;
+    private int LevelID = 2;
     private string Feedback = "";
 
     private enum Emotions { Angry = 1, Disgust = 2, Fear = 3, Sad = 4, Surprise = 5, Happy = 6, Neutral = 7 }
@@ -96,21 +99,23 @@ public class FeedbackHandler : MonoBehaviour
 
         // STEP 4: Build LLM prompt using raw values
         string prompt =
-            $"You are analyzing a VR training session where a trainee is interacting with an angry customer.\n" +
-            $"Based on the following measurements, determine whether the aggression is likely to escalate and provide actionable feedback to the trainee.\n\n" +
+            $"You are analyzing a VR training session where a trainee interacts with an angry customer.\n" +
+            $"Your task is to evaluate whether the situation is escalating (0) or de-escalating (1) based on the trainee's behavior and biometric indicators.\n\n" +
+            $"Interpretation rule:\n" +
+            $"- 1 means the trainee is successfully de-escalating the situation.\n" +
+            $"- 0 means the situation is escalating and corrective action is necessary.\n\n" +
             $"User Measurements:\n" +
             $"- Face Emotion: {faceRaw} (normalized: {faceNorm})\n" +
             $"- Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
             $"- Hand Sign: {handRaw}\n" +
             $"- Finger Gesture: {fingerRaw}\n" +
-            $"- Threshold Calculation Result: {endResult} (1 = aggression likely escalates, 0 = aggression under control)\n\n" +
-            $"Provide constructive feedback in the following format:\n" +
-            $"FACE: Comment on how the trainee's facial expressions impact escalation.\n" +
-            $"VOICE: Comment on how the trainee's tone, volume, and emotion impact escalation.\n" +
-            $"GESTURE: Comment on how the trainee's hand/finger gestures impact escalation.\n" +
-            $"GENERAL: Provide an overall recommendation to reduce escalation risk.";
-
-        Debug.Log("📌 Prompt sent to LLM:\n" + prompt);
+            $"- Threshold Calculation Result (0=escalation, 1=de-escalation): {endResult}\n\n" +
+            $"Using these values, provide clear and actionable feedback to help the trainee improve.\n" +
+            $"Use the following structured format:\n" +
+            $"FACE: ...\n" +
+            $"VOICE: ...\n" +
+            $"GESTURE: ...\n" +
+            $"GENERAL: ...";
 
         // STEP 5: Query LLM
         bool completed = false;
@@ -128,10 +133,11 @@ public class FeedbackHandler : MonoBehaviour
 
         yield return new WaitUntil(() => completed);
 
-        Debug.Log($"📝 LLM Feedback | Face={faceFeedback}, Voice={voiceFeedback}, Gesture={gestureFeedback}");
-
         // STEP 6: Update UI
         if (ResponseTMP != null) ResponseTMP.text = Feedback.Replace("\n", " ");
+
+        // Start the coroutine to send feedback properly
+        StartCoroutine(SendFeedbackToServer(UserID, LevelID, Feedback.Replace("\n", " ")));
     }
 
     private string SafeText(string value)
@@ -144,26 +150,24 @@ public class FeedbackHandler : MonoBehaviour
         if (string.IsNullOrEmpty(emotion)) return "Neutral";
         emotion = emotion.ToLower().Trim();
 
-        // Map voice numeric codes to string
         switch (emotion)
         {
             case "01":
-            case "02": return "Neutral"; // neutral / calm
+            case "02": return "Neutral";
             case "03": return "Happy";
             case "04": return "Sad";
             case "05": return "Angry";
             case "06": return "Fear";
             case "07": return "Disgust";
-            case "08": return "Surprise"; // added
+            case "08": return "Surprise";
         }
 
-        // Face string mapping
         if (emotion.Contains("fear")) return "Fear";
         if (emotion.Contains("angry")) return "Angry";
         if (emotion.Contains("disgust")) return "Disgust";
         if (emotion.Contains("sad")) return "Sad";
         if (emotion.Contains("happy")) return "Happy";
-        if (emotion.Contains("surprise")) return "Surprise"; // ensure lowercase match
+        if (emotion.Contains("surprise")) return "Surprise";
         if (emotion.Contains("neutral") || emotion.Contains("calm") || emotion.Contains("none")) return "Neutral";
 
         return "Neutral";
@@ -172,7 +176,7 @@ public class FeedbackHandler : MonoBehaviour
     private IEnumerator QueryOllama(string prompt, Action<string, string, string> onComplete)
     {
         var requestData = new OllamaRequest { model = ollamaModel, prompt = prompt };
-        string jsonData = JsonConvert.SerializeObject(requestData);
+        string jsonData = JsonUtility.ToJson(requestData);
         byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
 
         using (UnityWebRequest request = new UnityWebRequest(ollamaUrl, UnityWebRequest.kHttpVerbPOST))
@@ -180,7 +184,6 @@ public class FeedbackHandler : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Accept", "application/json");
 
             yield return request.SendWebRequest();
 
@@ -188,7 +191,7 @@ public class FeedbackHandler : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"❌ Ollama request failed: {request.error}\nResponse: {responseText}");
+                Debug.LogError($"❌ Ollama request failed: {request.error}\n{responseText}");
                 onComplete?.Invoke("", "", "");
                 yield break;
             }
@@ -206,24 +209,35 @@ public class FeedbackHandler : MonoBehaviour
     private string FlattenOllamaStreamingResponse(string rawJson)
     {
         if (string.IsNullOrEmpty(rawJson)) return "";
+
         StringBuilder sb = new StringBuilder();
-        foreach (string line in rawJson.Split('\n'))
+
+        string[] lines = rawJson.Split('\n');
+
+        foreach (string line in lines)
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
+            if (line.Contains("\"response\""))
             {
-                var chunk = JsonConvert.DeserializeObject<OllamaResponse>(line);
-                if (!string.IsNullOrEmpty(chunk?.response))
-                    sb.Append(chunk.response);
+                int idx = line.IndexOf("\"response\"");
+                int colon = line.IndexOf(':', idx);
+                int firstQuote = line.IndexOf('"', colon + 1);
+                int secondQuote = line.IndexOf('"', firstQuote + 1);
+
+                if (firstQuote != -1 && secondQuote != -1)
+                {
+                    string extracted = line.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
+                    sb.Append(extracted);
+                }
             }
-            catch { sb.Append(line); }
         }
+
         return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
     }
 
     private string ExtractSection(string text, string section)
     {
         if (string.IsNullOrEmpty(text)) return "";
+
         foreach (string line in text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith(section + ":", StringComparison.OrdinalIgnoreCase))
@@ -236,8 +250,51 @@ public class FeedbackHandler : MonoBehaviour
         return "";
     }
 
+    private IEnumerator SendFeedbackToServer(int userId, int level, string feedback)
+    {
+        // Build JSON payload
+        var payload = new FeedbackData
+        {
+            User_ID = userId,
+            Level = level,
+            Feedback = feedback
+        };
+        string jsonData = JsonUtility.ToJson(payload);
+
+        // Create request
+        using (UnityWebRequest www = new UnityWebRequest(feedbackApiUrl, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+            www.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            www.downloadHandler = new DownloadHandlerBuffer();
+            www.SetRequestHeader("Content-Type", "application/json");
+
+            Debug.Log($"➡️ Sending feedback JSON: {jsonData}");
+
+            yield return www.SendWebRequest();
+
+            if (www.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError($"❌ Feedback submission failed: {www.error}\n{www.downloadHandler.text}");
+            }
+            else
+            {
+                Debug.Log($"✅ Feedback successfully sent: {www.downloadHandler.text}");
+            }
+        }
+    }
+
     [Serializable] public class OllamaRequest { public string model; public string prompt; }
     [Serializable] private class OllamaResponse { public string response; }
+
+    
+    [Serializable]
+    private class FeedbackData
+    {
+        public int User_ID;
+        public int Level;
+        public string Feedback;
+    }
 
     [Serializable]
     private class EmotionData
