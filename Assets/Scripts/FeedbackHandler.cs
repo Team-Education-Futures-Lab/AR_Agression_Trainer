@@ -41,8 +41,8 @@ public class FeedbackHandler : MonoBehaviour
 
     void Start()
     {
-        StartCoroutine(PeriodicFeedback());
         LoadVideo();
+        StartCoroutine(PeriodicFeedback());
     }
 
     private IEnumerator PeriodicFeedback()
@@ -343,8 +343,6 @@ public class FeedbackHandler : MonoBehaviour
 
         videoPlayer.clip = clip;
         videoPlayer.Play();
-
-        CurrentStep++;
     }
 
     [Serializable] public class OllamaRequest { public string model; public string prompt; }
