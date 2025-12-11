@@ -3,6 +3,7 @@ using System.Collections;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Video;
 using TMPro;
 
 public class FeedbackHandler : MonoBehaviour
@@ -18,10 +19,10 @@ public class FeedbackHandler : MonoBehaviour
     [SerializeField] private string ollamaModel = "llama3";
 
     [Header("Timing and Factors")]
-    private float feedbackInterval = 30f;
-    private int FaceFactor = 1;
-    private int VoiceFactor = 2;
-    private double ThresholdFactor = 10.5;
+    [SerializeField] private float feedbackInterval = 30f;
+    [SerializeField] private int FaceFactor = 1;
+    [SerializeField] private int VoiceFactor = 2;
+    [SerializeField] private double ThresholdFactor = 10.5;
 
     [Header("Current static id's")]
     private int UserID = 1;
@@ -30,9 +31,16 @@ public class FeedbackHandler : MonoBehaviour
 
     private enum Emotions { Angry = 1, Disgust = 2, Fear = 3, Sad = 4, Surprise = 5, Happy = 6, Neutral = 7 }
 
+    [Header("Video loader")]
+    [SerializeField] private VideoPlayer videoPlayer;
+    [SerializeField] private int ScenarioID = 1;
+    [SerializeField] private int CurrentStep = 1;
+    [SerializeField] private int CurrentProgression = 1;
+
     void Start()
     {
         StartCoroutine(PeriodicFeedback());
+        LoadVideo();
     }
 
     private IEnumerator PeriodicFeedback()
@@ -95,6 +103,8 @@ public class FeedbackHandler : MonoBehaviour
             endResult = total >= ThresholdFactor ? 1 : 0;
         }
 
+        CurrentProgression += endResult;
+
         if (NextStepInt != null) NextStepInt.text = endResult.ToString();
 
         // STEP 4: Build LLM prompt using raw values
@@ -135,6 +145,7 @@ public class FeedbackHandler : MonoBehaviour
 
         // STEP 6: Update UI
         if (ResponseTMP != null) ResponseTMP.text = Feedback.Replace("\n", " ");
+        LoadVideo();
 
         // Start the coroutine to send feedback properly
         StartCoroutine(SendFeedbackToServer(UserID, LevelID, Feedback.Replace("\n", " ")));
@@ -282,6 +293,29 @@ public class FeedbackHandler : MonoBehaviour
                 Debug.Log($"✅ Feedback successfully sent: {www.downloadHandler.text}");
             }
         }
+    }
+
+    private void LoadVideo()
+    {
+        if (videoPlayer == null)
+        {
+            Debug.LogError("❌ No VideoPlayer assigned in the inspector!");
+            return;
+        }
+
+        string videoTitle = $"Scenario_0{ScenarioID}_0{CurrentStep}_0{CurrentProgression}";
+        VideoClip clip = Resources.Load<VideoClip>($"Videos/{videoTitle}");
+
+        if (clip == null)
+        {
+            Debug.LogError($"❌ Could not load video: Resources/Videos/{videoTitle}");
+            return;
+        }
+
+        videoPlayer.clip = clip;
+        videoPlayer.Play();
+
+        CurrentStep++;
     }
 
     [Serializable] public class OllamaRequest { public string model; public string prompt; }
