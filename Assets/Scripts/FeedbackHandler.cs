@@ -11,6 +11,7 @@ public class FeedbackHandler : MonoBehaviour
     [Header("UI References")]
     public TextMeshProUGUI ResponseTMP;
     public TextMeshProUGUI NextStepInt;
+    public TextMeshProUGUI ScoreUpdate;
 
     [Header("Server Settings")]
     [SerializeField] private string emotionApiUrl = "http://127.0.0.1:5000/get_emotion";
@@ -19,23 +20,23 @@ public class FeedbackHandler : MonoBehaviour
     [SerializeField] private string ollamaModel = "llama3";
 
     [Header("Timing and Factors")]
-    [SerializeField] private float feedbackInterval = 30f;
     [SerializeField] private int FaceFactor = 1;
-    [SerializeField] private int VoiceFactor = 2;
-    [SerializeField] private double ThresholdFactor = 10.5;
+    [SerializeField] private int VoiceFactor = 1;
+    [SerializeField] private double ThresholdFactor = 15;
 
     [Header("Current static id's")]
     private int UserID = 1;
     private int LevelID = 2;
     private string Feedback = "";
 
-    private enum Emotions { Angry = 1, Disgust = 2, Fear = 3, Sad = 4, Surprise = 5, Happy = 6, Neutral = 7 }
+    private enum Emotions { Angry = 1, Fear = 2, Disgust = 3,  Sad = 4, Surprise = 5, Happy = 6, Neutral = 7 }
 
     [Header("Video loader")]
     [SerializeField] private VideoPlayer videoPlayer;
     [SerializeField] private int ScenarioID = 1;
     [SerializeField] private int CurrentStep = 1;
     [SerializeField] private int CurrentProgression = 1;
+    [SerializeField] private int LastVideoStep = 7;
 
     void Start()
     {
@@ -48,13 +49,13 @@ public class FeedbackHandler : MonoBehaviour
         while (true)
         {
             yield return StartCoroutine(FetchEmotionsAndGenerateFeedback());
-            yield return new WaitForSeconds(feedbackInterval);
+            yield return new WaitUntil(() => !videoPlayer.isPlaying);
         }
     }
 
     private IEnumerator FetchEmotionsAndGenerateFeedback()
     {
-        // STEP 1: Fetch emotions directly from API
+        // STEP 1: Fetch emotions from API (can start immediately)
         string faceRaw = "none";
         string voiceRaw = "none";
         string handRaw = "none";
@@ -91,23 +92,59 @@ public class FeedbackHandler : MonoBehaviour
         // STEP 2: Normalize face/voice only for calculation
         string faceNorm = NormalizeEmotion(faceRaw);
         string voiceNorm = NormalizeEmotion(voiceRaw);
-
-        Debug.Log($"🧩 Normalized values | Face: '{faceNorm}', Voice: '{voiceNorm}'");
-
-        // STEP 3: Threshold calculation
         int endResult = 0;
-        if (Enum.TryParse(faceNorm, true, out Emotions faceVal) &&
-            Enum.TryParse(voiceNorm, true, out Emotions voiceVal))
+
+        if (Enum.TryParse(faceNorm, true, out Emotions faceVal) && Enum.TryParse(voiceNorm, true, out Emotions voiceVal))
         {
             double total = ((int)faceVal * FaceFactor) + ((int)voiceVal * VoiceFactor);
-            endResult = total >= ThresholdFactor ? 1 : 0;
+
+            // Step 1: Determine endResult based on threshold
+            endResult = total >= ThresholdFactor ? -1 : 1;
+
+            int newProgression = CurrentProgression + endResult;
+
+            // Clamp progression to valid range (1-4)
+            newProgression = Mathf.Clamp(newProgression, 1, 4);
+
+            // Update endResult based on clamped progression
+            endResult = newProgression - CurrentProgression;
+            CurrentProgression = newProgression;
+
+            // Update score display
+            if (ScoreUpdate != null)
+            {
+                ScoreUpdate.text = total.ToString();   
+            }
+
+            if (NextStepInt != null)
+            {
+                NextStepInt.text = endResult.ToString();   
+            }
         }
 
-        CurrentProgression += endResult;
+        // STEP 3: Load next video and wait until it's prepared
+        if(CurrentStep != LastVideoStep)
+        {
+            string videoTitle = $"Scenario_0{ScenarioID}_0{CurrentStep}_0{CurrentProgression}";
+            VideoClip clip = Resources.Load<VideoClip>($"Videos/{videoTitle}");
+            if (clip == null)
+            {
+                Debug.LogError($"❌ Could not load video: Resources/Videos/{videoTitle}");
+                yield break;
+            }
 
-        if (NextStepInt != null) NextStepInt.text = endResult.ToString();
+            videoPlayer.clip = clip;
+            videoPlayer.Prepare();
 
-        // STEP 4: Build LLM prompt using raw values
+            // Wait until the video is fully prepared
+            yield return new WaitUntil(() => videoPlayer.isPrepared);
+
+            // Start playing the video after preparation
+            videoPlayer.Play();
+            CurrentStep++;   
+        }
+
+        // STEP 4: Build LLM prompt
         string prompt =
             $"You are analyzing a VR training session where a trainee interacts with an angry customer.\n" +
             $"Your task is to evaluate whether the situation is escalating (0) or de-escalating (1) based on the trainee's behavior and biometric indicators.\n\n" +
@@ -127,7 +164,7 @@ public class FeedbackHandler : MonoBehaviour
             $"GESTURE: ...\n" +
             $"GENERAL: ...";
 
-        // STEP 5: Query LLM
+        // STEP 5: Query Ollama asynchronously while video is playing
         bool completed = false;
         string faceFeedback = faceNorm;
         string voiceFeedback = voiceNorm;
@@ -143,11 +180,10 @@ public class FeedbackHandler : MonoBehaviour
 
         yield return new WaitUntil(() => completed);
 
-        // STEP 6: Update UI
+        // STEP 6: Update UI asynchronously
         if (ResponseTMP != null) ResponseTMP.text = Feedback.Replace("\n", " ");
-        LoadVideo();
 
-        // Start the coroutine to send feedback properly
+        // STEP 7: Send feedback to server asynchronously
         StartCoroutine(SendFeedbackToServer(UserID, LevelID, Feedback.Replace("\n", " ")));
     }
 
