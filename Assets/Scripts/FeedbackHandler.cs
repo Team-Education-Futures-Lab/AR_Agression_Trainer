@@ -147,7 +147,7 @@ public class FeedbackHandler : MonoBehaviour
         // STEP 4: Build LLM prompt
         string prompt =
             $"You are analyzing a VR training session where a trainee interacts with an angry customer.\n" +
-            $"Your task is to evaluate whether the situation is escalating (0) or de-escalating (1) based on the trainee's behavior and biometric indicators.\n\n" +
+            $"Your task is to evaluate whether the situation is escalating (1) or de-escalating (-1) based on the trainee's behavior and biometric indicators.\n\n" +
             $"Interpretation rule:\n" +
             $"- 1 means the trainee is successfully de-escalating the situation.\n" +
             $"- 0 means the situation is escalating and corrective action is necessary.\n\n" +
@@ -156,7 +156,7 @@ public class FeedbackHandler : MonoBehaviour
             $"- Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
             $"- Hand Sign: {handRaw}\n" +
             $"- Finger Gesture: {fingerRaw}\n" +
-            $"- Threshold Calculation Result (0=escalation, 1=de-escalation): {endResult}\n\n" +
+            $"- Threshold Calculation Result (1=escalation, -1=de-escalation): {endResult}\n\n" +
             $"Using these values, provide clear and actionable feedback to help the trainee improve.\n" +
             $"Use the following structured format:\n" +
             $"FACE: ...\n" +
