@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections;
 using System.Text;
 using UnityEngine;
@@ -145,24 +146,16 @@ public class FeedbackHandler : MonoBehaviour
         }
 
         // STEP 4: Build LLM prompt
-        string prompt =
-            $"You are analyzing a VR training session where a trainee interacts with an angry customer.\n" +
-            $"Your task is to evaluate whether the situation is escalating (1) or de-escalating (-1) based on the trainee's behavior and biometric indicators.\n\n" +
-            $"Interpretation rule:\n" +
-            $"- 1 means the trainee is successfully de-escalating the situation.\n" +
-            $"- 0 means the situation is escalating and corrective action is necessary.\n\n" +
-            $"User Measurements:\n" +
-            $"- Face Emotion: {faceRaw} (normalized: {faceNorm})\n" +
-            $"- Voice Emotion: {voiceRaw} (normalized: {voiceNorm})\n" +
-            $"- Hand Sign: {handRaw}\n" +
-            $"- Finger Gesture: {fingerRaw}\n" +
-            $"- Threshold Calculation Result (1=escalation, -1=de-escalation): {endResult}\n\n" +
-            $"Using these values, provide clear and actionable feedback to help the trainee improve.\n" +
-            $"Use the following structured format:\n" +
-            $"FACE: ...\n" +
-            $"VOICE: ...\n" +
-            $"GESTURE: ...\n" +
-            $"GENERAL: ...";
+        string promptTemplate = File.ReadAllText("Assets/Prompts/ARTrainingAnalysis.prompt");
+
+        string prompt = promptTemplate
+            .Replace("{faceRaw}", faceRaw.ToString())
+            .Replace("{faceNorm}", faceNorm.ToString())
+            .Replace("{voiceRaw}", voiceRaw.ToString())
+            .Replace("{voiceNorm}", voiceNorm.ToString())
+            .Replace("{handRaw}", handRaw)
+            .Replace("{fingerRaw}", fingerRaw)
+            .Replace("{endResult}", endResult.ToString());
 
         // STEP 5: Query Ollama asynchronously while video is playing
         bool completed = false;
