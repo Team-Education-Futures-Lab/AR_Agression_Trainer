@@ -17,15 +17,14 @@ public class FeedbackHandler : MonoBehaviour
     [Header("Server Settings")]
     [SerializeField] private string emotionApiUrl = "http://127.0.0.1:5000/get_emotion";
     [SerializeField] private string feedbackApiUrl = "http://127.0.0.1:5000/submit_feedback";
-    [SerializeField] private string ollamaUrl = "http://127.0.0.1:11434/api/generate";
-    [SerializeField] private string ollamaModel = "llama3";
+    [SerializeField] private OllamaHandler ollamaHandler;
 
     [Header("Timing and Factors")]
     [SerializeField] private int FaceFactor = 1;
     [SerializeField] private int VoiceFactor = 1;
-    [SerializeField] private double ThresholdFactor = 15;
+    [SerializeField] private double ThresholdFactor = 9;
 
-    [Header("Current static id's")]
+    [Header("Current static id's")] //Make this later dynamic
     private int UserID = 1;
     private int LevelID = 2;
     private string Feedback = "";
@@ -123,7 +122,7 @@ public class FeedbackHandler : MonoBehaviour
             }
         }
 
-        // STEP 3: Load next video and wait until it's prepared
+        // STEP 3: Load and play video immediately
         if(CurrentStep != LastVideoStep)
         {
             string videoTitle = $"Scenario_0{ScenarioID}_0{CurrentStep}_0{CurrentProgression}";
@@ -131,52 +130,49 @@ public class FeedbackHandler : MonoBehaviour
             if (clip == null)
             {
                 Debug.LogError($"❌ Could not load video: Resources/Videos/{videoTitle}");
-                yield break;
             }
-
-            videoPlayer.clip = clip;
-            videoPlayer.Prepare();
-
-            // Wait until the video is fully prepared
-            yield return new WaitUntil(() => videoPlayer.isPrepared);
-
-            // Start playing the video after preparation
-            videoPlayer.Play();
-            CurrentStep++;   
+            else
+            {
+                videoPlayer.clip = clip;
+                videoPlayer.Prepare();
+                yield return new WaitUntil(() => videoPlayer.isPrepared);
+                videoPlayer.Play();
+                CurrentStep++;
+            }
         }
 
-        // STEP 4: Build LLM prompt
-        string promptTemplate = File.ReadAllText("Assets/Prompts/ARTrainingAnalysis.prompt");
+        // STEP 4: Start Ollama asynchronously, but DON'T yield return it
+        yield return StartCoroutine(
+            ollamaHandler.StartOllama(
+                faceRaw,
+                faceNorm,
+                voiceRaw,
+                voiceNorm,
+                handRaw,
+                fingerRaw,
+                endResult.ToString(),
+                (full, face, voice, gesture) =>
+                {
+                    // Update Feedback and UI when done
+                    Feedback = full;
+                    if (ResponseTMP != null)
+                        ResponseTMP.text = Feedback.Replace("\n", " ");
 
-        string prompt = promptTemplate
-            .Replace("{faceRaw}", faceRaw.ToString())
-            .Replace("{faceNorm}", faceNorm.ToString())
-            .Replace("{voiceRaw}", voiceRaw.ToString())
-            .Replace("{voiceNorm}", voiceNorm.ToString())
-            .Replace("{handRaw}", handRaw)
-            .Replace("{fingerRaw}", fingerRaw)
-            .Replace("{endResult}", endResult.ToString());
+                    // Send to server
+                    if (!string.IsNullOrEmpty(Feedback))
+                    {
+                        StartCoroutine(
+                            SendFeedbackToServer(UserID, LevelID, Feedback.Replace("\n", " "))
+                        );
+                    }
+                }
+            )
+        );
 
-        // STEP 5: Query Ollama asynchronously while video is playing
-        bool completed = false;
-        string faceFeedback = faceNorm;
-        string voiceFeedback = voiceNorm;
-        string gestureFeedback = $"{handRaw} / {fingerRaw}";
-
-        yield return StartCoroutine(QueryOllama(prompt, (f, v, g) =>
-        {
-            faceFeedback = string.IsNullOrEmpty(f) ? faceNorm : f;
-            voiceFeedback = string.IsNullOrEmpty(v) ? voiceNorm : v;
-            gestureFeedback = string.IsNullOrEmpty(g) ? $"{handRaw} / {fingerRaw}" : g;
-            completed = true;
-        }));
-
-        yield return new WaitUntil(() => completed);
-
-        // STEP 6: Update UI asynchronously
+        // STEP 5: Update UI asynchronously
         if (ResponseTMP != null) ResponseTMP.text = Feedback.Replace("\n", " ");
 
-        // STEP 7: Send feedback to server asynchronously
+        // STEP 6: Send feedback to server asynchronously
         StartCoroutine(SendFeedbackToServer(UserID, LevelID, Feedback.Replace("\n", " ")));
     }
 
@@ -211,67 +207,6 @@ public class FeedbackHandler : MonoBehaviour
         if (emotion.Contains("neutral") || emotion.Contains("calm") || emotion.Contains("none")) return "Neutral";
 
         return "Neutral";
-    }
-
-    private IEnumerator QueryOllama(string prompt, Action<string, string, string> onComplete)
-    {
-        var requestData = new OllamaRequest { model = ollamaModel, prompt = prompt };
-        string jsonData = JsonUtility.ToJson(requestData);
-        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
-
-        using (UnityWebRequest request = new UnityWebRequest(ollamaUrl, UnityWebRequest.kHttpVerbPOST))
-        {
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-
-            yield return request.SendWebRequest();
-
-            string responseText = request.downloadHandler.text;
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogError($"❌ Ollama request failed: {request.error}\n{responseText}");
-                onComplete?.Invoke("", "", "");
-                yield break;
-            }
-
-            Feedback = FlattenOllamaStreamingResponse(responseText);
-
-            string face = ExtractSection(Feedback, "FACE");
-            string voice = ExtractSection(Feedback, "VOICE");
-            string gesture = ExtractSection(Feedback, "GESTURE");
-
-            onComplete?.Invoke(face, voice, gesture);
-        }
-    }
-
-    private string FlattenOllamaStreamingResponse(string rawJson)
-    {
-        if (string.IsNullOrEmpty(rawJson)) return "";
-
-        StringBuilder sb = new StringBuilder();
-
-        string[] lines = rawJson.Split('\n');
-
-        foreach (string line in lines)
-        {
-            if (line.Contains("\"response\""))
-            {
-                int idx = line.IndexOf("\"response\"");
-                int colon = line.IndexOf(':', idx);
-                int firstQuote = line.IndexOf('"', colon + 1);
-                int secondQuote = line.IndexOf('"', firstQuote + 1);
-
-                if (firstQuote != -1 && secondQuote != -1)
-                {
-                    string extracted = line.Substring(firstQuote + 1, secondQuote - firstQuote - 1);
-                    sb.Append(extracted);
-                }
-            }
-        }
-
-        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
     }
 
     private string ExtractSection(string text, string section)
