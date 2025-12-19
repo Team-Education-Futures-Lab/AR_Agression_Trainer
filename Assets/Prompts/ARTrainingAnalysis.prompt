@@ -1,0 +1,20 @@
+You are analyzing a AR training session where a trainee interacts with an angry customer.
+Your task is to evaluate whether the situation is escalating (1) or de-escalating (-1) based on the trainee's behavior and biometric indicators.
+
+Interpretation rule:
+- 1 means the trainee is successfully de-escalating the situation.
+- 0 means the situation is escalating and corrective action is necessary.
+
+User Measurements:
+- Face Emotion: {faceRaw} (normalized: {faceNorm})
+- Voice Emotion: {voiceRaw} (normalized: {voiceNorm})
+- Hand Sign: {handRaw}
+- Finger Gesture: {fingerRaw}
+- Threshold Calculation Result (1=escalation, -1=de-escalation): {endResult}
+
+Using these values, provide clear and actionable feedback to help the trainee improve.
+Use the following structured format:
+FACE: ...
+VOICE: ...
+GESTURE: ...
+GENERAL: ...
