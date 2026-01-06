@@ -1,6 +1,6 @@
 # AR Aggression Trainer
 
-AR Aggression Trainer is an augmented reality training application built in Unity for Microsoft HoloLens 2. Its purpose is to help learners (such as service staff or students) experience and practice de‑escalation techniques in simulated aggressive interactions, enhanced with AI‑driven feedback based on tone of voice, facial expressions, and body language. 
+**AR Aggression Trainer** is an augmented reality training application built in **Unity** for **Microsoft HoloLens 2**. Its purpose is to help learners (such as service staff or students) experience and practice de‑escalation techniques in simulated aggressive interactions, enhanced with AI‑driven feedback based on tone of voice, facial expressions, and body language. 
 Futures Lab
 #
 🎯 Table of Contents
@@ -17,27 +17,27 @@ Futures Lab
 #
 🧠 About
 
-AR Aggression Trainer delivers immersive, real‑time training scenarios on the HoloLens 2 headset by:
+AR Aggression Trainer delivers immersive, real‑time training scenarios on the **HoloLens 2 headset** by:
 
 - Streaming live video to an AI service
 - Receiving emotional, vocal, and gesture analyses
 - Providing responsive feedback to the user
 - Creating a safe space for training challenging interpersonal skills
 
-This project is part of an educational toolkit developed by Team Education Futures Lab, in collaboration with stakeholders looking to effectively teach conflict management and customer interaction skills. 
+This project is part of an educational toolkit developed by **Team Education Futures Lab**, in collaboration with stakeholders looking to effectively teach conflict management and customer interaction skills. 
 Futures Lab
 #
 🚀 Features
 
-✅ Unity‑based AR application optimized for HoloLens 2
+✅ **Unity‑based AR application optimized** for HoloLens 2
 
-✅ Live video streaming from the headset
+✅ **Live video streaming** from the headset
 
-✅ AI‑driven behavior analysis (voice tone, gesture, facial expressions)
+✅ **AI‑driven behavior analysis** (voice tone, gesture, facial expressions)
 
-✅ Automated feedback loop to guide users during scenarios
+✅ **Automated feedback loop** to guide users during scenarios
 
-✅ Modular structure for defining new scenario experiences
+✅ **Modular structure** for defining new scenario experiences
 #
 🛠 Architecture
 
@@ -67,48 +67,48 @@ To build and run this project, you’ll need:
 |HoloLens 2 SDK / XR Plugin             |	Latest
 |Visual Studio                          |	2019+
 |.NET / C#                              |	Compatible with Unity
-|AI Feedback Backend                    |	REST/WebSocket capable
+|AI Feedback Backend                    |	**REST/WebSocket capable**
 
 #
 **▶️ Getting Started**
 
-**1.** Clone the repository
+**1. Clone the repository**
 
 ```bash
 git clone https://github.com/Team-Education-Futures-Lab/AR_Agression_Trainer.git
 cd AR_Agression_Trainer
 ```
 
-**2.** Create a new folder and follow the instructions in the READ.me from:
+**2. Create a new folder and follow the instructions in the READ.md from:**
 https://github.com/Team-Education-Futures-Lab/Facial_Recognition 
 
-**3.** Open in Unity
+**3. Open in Unity**
 - Launch Unity Hub
 - Add the project folder
 - Open the project
 
-**4.** Import Dependencies
+**4. Import Dependencies**
 
 Ensure MRTK and HoloLens packages are installed via Unity Package Manager.
 
-**5.** Configure Scenes
-- Set Scenes/Main.unity (or equivalent) as the startup scene.
-- Confirm XR configuration is set for HoloLens 2.
+**5. Configure Scenes**
+- Set `Scenes/Main.unity` (or equivalent) as the startup scene.
+- Confirm XR configuration is set for **HoloLens 2**.
 #
 **🔄 Streaming & AI Integration**
 
 This project streams the camera feed from the HoloLens 2 to an external AI service that analyzes user interactions and scenario responses. The interaction flow is roughly:
 
-1. HoloLens captures video + audio + user movement
-2. Data is sent to an AI service (via REST/WebSocket)
+1. HoloLens captures **video** + **audio** + **user movement**
+2. Data is sent to an **AI service** (via REST/WebSocket)
 3. AI processes the inputs and returns feedback
-4. The Unity app applies real‑time feedback and visuals
+4. The Unity app applies **real‑time feedback and visuals**
 
 ⚠️ This repository assumes you have a compatible AI backend. You’ll need to provide the endpoint and API keys in the config scripts.
 #
 **🧪 Testing**
 
-Use the Unity Editor Play Mode for rapid iteration/testing of non‑HoloLens logic. For spatial/AR tests, deploy directly to your HoloLens 2 device.
+Use the **Unity Editor Play Mode** for rapid iteration/testing of non‑HoloLens logic. For spatial/AR tests, deploy directly to your **HoloLens 2** device.
 #
 **📄 License**
 
@@ -128,6 +128,6 @@ Reference backing tickets/issues
 #
 **📌 Notes**
 
-This repository currently has no README in its main branch.
+This repository currently has no **README** in its main branch.
 
 The context and purpose were inferred from public descriptions of the project vision.
