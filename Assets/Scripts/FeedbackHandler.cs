@@ -126,6 +126,12 @@ public class FeedbackHandler : MonoBehaviour
         if(CurrentStep != LastVideoStep)
         {
             string videoTitle = $"Scenario_0{ScenarioID}_0{CurrentStep}_0{CurrentProgression}";
+
+            if(CurrentStep == 1)
+            {
+                videoTitle = $"Scenario_0{ScenarioID}_0{CurrentStep}_01";
+            }
+
             VideoClip clip = Resources.Load<VideoClip>($"Videos/{videoTitle}");
             if (clip == null)
             {
