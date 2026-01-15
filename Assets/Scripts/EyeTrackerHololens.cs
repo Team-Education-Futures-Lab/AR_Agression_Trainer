@@ -10,7 +10,9 @@ public class EyeTrackerHololens : MonoBehaviour
     // InputAction references for OpenXR eye tracking
     private InputAction eyeGazePositionAction;
     private InputAction eyeGazeRotationAction;
-    public TextMeshProUGUI emotionTMP;
+
+    [SerializeField]
+    private TextMeshProUGUI emotionTMP;
 
     void OnEnable()
     {
@@ -34,16 +36,16 @@ public class EyeTrackerHololens : MonoBehaviour
         if (eyeGazePositionAction != null && eyeGazeRotationAction != null)
         {
             // Get gaze origin
-            Vector3 origin = eyeGazePositionAction.ReadValue<Vector3>();
+            Vector3 gazeOrigin = eyeGazePositionAction.ReadValue<Vector3>();
 
             // Get gaze direction from rotation
-            Quaternion rotation = eyeGazeRotationAction.ReadValue<Quaternion>();
-            Vector3 direction = rotation * Vector3.forward;
+            Quaternion gazeRotation = eyeGazeRotationAction.ReadValue<Quaternion>();
+            Vector3 gazeDirection = gazeRotation * Vector3.forward;
 
             // Debug visualization
-            Debug.DrawRay(origin, direction * 10, Color.green);
-            Debug.Log($"👁 Origin: {origin}, Direction: {direction}");
-            emotionTMP.text = $"👁 Origin: {origin}, Direction: {direction}";
+            Debug.DrawRay(gazeOrigin, gazeDirection * 10, Color.green);
+            Debug.Log($"Gaze origin: {gazeOrigin}, direction: {gazeDirection}");
+            emotionTMP.text = $"Origin: {gazeOrigin}, Direction: {gazeDirection}";
         }
     }
 

@@ -135,7 +135,7 @@ public class FeedbackHandler : MonoBehaviour
             VideoClip clip = Resources.Load<VideoClip>($"Videos/{videoTitle}");
             if (clip == null)
             {
-                Debug.LogError($"❌ Could not load video: Resources/Videos/{videoTitle}");
+            Debug.LogError($"Could not load video: Resources/Videos/{videoTitle}");
             }
             else
             {

@@ -8,63 +8,59 @@ using TMPro;
 public class AccountManager : MonoBehaviour
 {
     [Header("UI References")]
-    [Tooltip("The text label of the login/create button (used to detect mode).")]
-    public TMP_Text LoginButtonText;
+    [Tooltip("Text label of the login/create button (used to detect mode).")]
+    [SerializeField]
+    private TMP_Text loginButtonLabel;
 
     [Header("Input Button Texts")]
-    [Tooltip("The text shown on the username button (set by InputHandler).")]
-    [SerializeField] private TMP_Text UsernameButtonText;
+    [Tooltip("Text shown on the username button (set by InputHandler).")]
+    [SerializeField]
+    private TMP_Text usernameButtonLabel;
 
-    [Tooltip("The text shown on the password button (set by InputHandler).")]
-    [SerializeField] private TMP_Text PasswordButtonText;
+    [Tooltip("Text shown on the password button (set by InputHandler).")]
+    [SerializeField]
+    private TMP_Text passwordButtonLabel;
 
     [Header("Server Settings")]
-    [SerializeField] 
-    private string serverUrl = "http://127.0.0.1:5000/AccountInformation"; // Flask server URL
+    [SerializeField]
+    private string serverUrl = "http://127.0.0.1:5000/AccountInformation";
 
-    // --------------------------
-    // Login / Create Account
-    // --------------------------
     public void SubmitAccount()
     {
-        string username = UsernameButtonText != null ? UsernameButtonText.text.Trim() : "";
-        string password = PasswordButtonText != null ? PasswordButtonText.text.Trim() : "";
+        string username = usernameButtonLabel != null ? usernameButtonLabel.text.Trim() : string.Empty;
+        string password = passwordButtonLabel != null ? passwordButtonLabel.text.Trim() : string.Empty;
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            Debug.LogWarning("⚠️ Username or password is empty.");
+            Debug.LogWarning("Username or password is empty.");
             return;
         }
 
-        string hashedPassword = ComputeSHA256Hash(password);
+        string hashedPassword = ComputeSha256Hash(password);
 
-        // Determine request type based on button text
-        string requestType = LoginButtonText != null && 
-                             LoginButtonText.text.ToLower().Contains("login") ? "login" : "create";
+        string requestType = loginButtonLabel != null &&
+                             loginButtonLabel.text.ToLower().Contains("login") ? "login" : "create";
 
         Debug.Log($"Submitting {requestType} request for user '{username}'");
 
         StartCoroutine(PostToServer(requestType, username, hashedPassword));
     }
 
-    // --------------------------
-    // Hashing helper
-    // --------------------------
-    private string ComputeSHA256Hash(string rawData)
+    private string ComputeSha256Hash(string rawData)
     {
         using (SHA256 sha256 = SHA256.Create())
         {
             byte[] bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(rawData));
             StringBuilder builder = new StringBuilder();
             foreach (byte b in bytes)
+            {
                 builder.Append(b.ToString("x2"));
+            }
+
             return builder.ToString();
         }
     }
 
-    // --------------------------
-    // Coroutine to send POST request
-    // --------------------------
     private IEnumerator PostToServer(string requestType, string username, string hashedPassword)
     {
         WWWForm form = new WWWForm();
@@ -84,11 +80,11 @@ public class AccountManager : MonoBehaviour
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log($"✅ Server Response: {request.downloadHandler.text}");
+                Debug.Log($"Server response: {request.downloadHandler.text}");
             }
             else
             {
-                Debug.LogError($"❌ Server Error: {request.error}");
+                Debug.LogError($"Server error: {request.error}");
             }
         }
     }
